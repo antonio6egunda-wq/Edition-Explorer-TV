@@ -1,0 +1,91 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Edition Explorer</string>
+
+    <!-- Home -->
+    <string name="secao_armazenamento">Armazenamento</string>
+    <string name="secao_biblioteca">Biblioteca</string>
+    <string name="secao_transferencia">Transferência</string>
+    <string name="card_armazenamento">Armazenamento</string>
+    <string name="card_usb">USB</string>
+    <string name="card_sd">Cartão SD</string>
+    <string name="nao_inserido">Não inserido</string>
+    <string name="livres_de">%1$s livres de %2$s</string>
+    <string name="banner_videos">Vídeos</string>
+    <string name="banner_musica">Música</string>
+    <string name="banner_fotos">Fotos</string>
+    <string name="banner_documentos">Documentos</string>
+    <string name="itens_count">%d itens</string>
+    <string name="a_calcular">A calcular…</string>
+    <string name="btn_transferencia">Transferência LAN</string>
+    <string name="permissao_aviso">Conceda o acesso a ficheiros para ver o conteúdo da TV Box.</string>
+    <string name="btn_permissao">Conceder acesso</string>
+
+    <!-- LAN -->
+    <string name="lan_titulo">Transferência LAN</string>
+    <string name="novos">Novos</string>
+    <string name="por_ver">%d por ver</string>
+    <string name="em_breve">Em breve</string>
+    <string name="lan_ativar">Ativar</string>
+    <string name="lan_desativar">Desativar</string>
+    <string name="lan_auto_off">Desligar automático (10 min)</string>
+    <string name="lan_inativo">Desativada</string>
+    <string name="lan_ativo">Ativa: envie ficheiros do telemóvel ou PC</string>
+    <string name="lan_qr_hint">Ative a transferência para mostrar o código QR</string>
+    <string name="lan_sem_rede">Liga a TV Box ao Wi-Fi ou cabo de rede primeiro.</string>
+    <string name="lan_recebido">Recebido: %s</string>
+    <string name="lan_auto_desligado">Transferência desligada automaticamente.</string>
+    <string name="lan_erro">Erro ao iniciar servidor: %s</string>
+
+    <!-- Browser -->
+    <string name="browser_detalhado">Detalhado</string>
+    <string name="browser_compacto">Compacto</string>
+    <string name="browser_grade">Grade</string>
+    <string name="ordenar_nome">Ordenar: Nome</string>
+    <string name="ordenar_data">Ordenar: Data</string>
+    <string name="a_procurar">A procurar ficheiros…</string>
+    <string name="pasta_vazia">Pasta vazia</string>
+    <string name="sem_acesso">Sem acesso a esta pasta</string>
+    <string name="browser_dica">Menu ou tecla Y: ações · Voltar: subir de pasta</string>
+    <string name="clip_copiado">Copiado: %1$s. Abra uma pasta e escolha Colar.</string>
+    <string name="clip_recortado">Recortado: %1$s. Abra uma pasta e escolha Colar.</string>
+    <string name="nenhuma_app">Nenhuma app encontrada para abrir este ficheiro.</string>
+    <string name="tipo_pasta">Pasta</string>
+    <string name="tipo_ficheiro">Ficheiro</string>
+    <string name="tamanho">Tamanho</string>
+    <string name="tipo">Tipo</string>
+    <string name="modificado">Modificado</string>
+    <string name="caminho">Caminho</string>
+    <string name="informacao_titulo">Informação</string>
+
+    <!-- Menu de ações -->
+    <string name="menu_copiar">Copiar</string>
+    <string name="menu_recortar">Recortar</string>
+    <string name="menu_colar">Colar</string>
+    <string name="menu_renomear">Renomear</string>
+    <string name="menu_excluir">Excluir</string>
+    <string name="menu_informacao">Informação</string>
+
+    <!-- Diálogos e operações -->
+    <string name="renomear">Renomear</string>
+    <string name="excluir_titulo">Excluir?</string>
+    <string name="excluir_msg">Tem a certeza que quer excluir \"%s\"?</string>
+    <string name="excluir">Excluir</string>
+    <string name="cancelar">Cancelar</string>
+    <string name="ok">OK</string>
+    <string name="ok_copiado">Copiado</string>
+    <string name="ok_movido">Movido</string>
+    <string name="ok_colado">Colado</string>
+    <string name="ok_excluido">Excluído</string>
+    <string name="ok_renomeado">Renomeado</string>
+    <string name="erro_operacao">Não foi possível concluir a operação.</string>
+
+    <!-- Enviar da TV -->
+    <string name="banner_enviar">Enviar da TV</string>
+    <string name="selecionados_n">%d selecionados</string>
+    <string name="enviar_n">Enviar (%d)</string>
+    <string name="envio_pronto">%d ficheiros prontos para descarregar</string>
+    <string name="envio_vazio">Nenhum ficheiro marcado para enviar.</string>
+    <string name="btn_limpar">Limpar seleção</string>
+    <string name="n_dispositivos">%d dispositivos ligados</string>
+</resources>

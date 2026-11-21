@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="bg_app">#0E1116</color>
+    <color name="surface">#1B1F27</color>
+    <color name="surface_focus">#2A3140</color>
+    <color name="accent">#4FC3F7</color>
+    <color name="accent_dark">#1565C0</color>
+    <color name="text_primary">#F3F5F8</color>
+    <color name="text_secondary">#9AA3B2</color>
+    <color name="text_on_accent">#0E1116</color>
+    <color name="divider">#42434A</color>
+    <color name="dot_new">#2979FF</color>
+    <color name="purple">#BD89FF</color>
+    <color name="purple_dark">#5E35B1</color>
+    <color name="danger_dark">#B71C1C</color>
+    <color name="success">#66BB6A</color>
+    <color name="menu_card">#1E1E24</color>
+    <color name="thumb_bg">#0B0D12</color>
+</resources>
