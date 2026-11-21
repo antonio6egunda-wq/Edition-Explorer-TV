@@ -118,9 +118,9 @@ public class HomeActivity extends AppCompatActivity {
         bindCard(cardStorage, StorageHelper.findAll(vols, StorageHelper.TYPE_INTERNAL),
                 R.string.card_armazenamento, R.drawable.ic_drive);
         bindCard(cardUsb, StorageHelper.findAll(vols, StorageHelper.TYPE_USB),
-                R.string.card_usb, R.drawable.ic_usb);
+                R.string.card_usb, R.drawable.ic_drive);
         bindCard(cardSd, StorageHelper.findAll(vols, StorageHelper.TYPE_SD),
-                R.string.card_sd, R.drawable.ic_disc);
+                R.string.card_sd, R.drawable.ic_drive);
     }
 
     /**
