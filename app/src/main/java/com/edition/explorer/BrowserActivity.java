@@ -576,13 +576,16 @@ public class BrowserActivity extends AppCompatActivity {
         }
         operando = true;
         new Thread(() -> {
-            boolean ok;
+            boolean ok = false;
             String detalhe = null;
             try {
                 ok = op.run();
-            } catch (Exception e) {
+            } catch (Throwable t) {
+                // Errors (ex.: classe de biblioteca ausente no aparelho) também contam como falha
                 ok = false;
-                detalhe = e.getMessage();
+                detalhe = t.getMessage() != null && !t.getMessage().isEmpty()
+                        ? t.getMessage()
+                        : t.getClass().getSimpleName();
             }
             final boolean resultado = ok;
             final String causa = detalhe;

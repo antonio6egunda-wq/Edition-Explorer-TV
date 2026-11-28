@@ -1,13 +1,8 @@
 package com.edition.explorer;
 
-import com.github.junrar.Archive;
-import com.github.junrar.rarfile.FileHeader;
+import android.os.Build;
 
-import org.apache.commons.compress.archivers.sevenz.SevenZArchiveEntry;
-import org.apache.commons.compress.archivers.sevenz.SevenZFile;
-import org.apache.commons.compress.archivers.zip.ZipArchiveEntry;
-import org.apache.commons.compress.archivers.zip.ZipFile;
-
+import java.io.BufferedInputStream;
 import java.io.BufferedOutputStream;
 import java.io.File;
 import java.io.FileInputStream;
@@ -15,11 +10,13 @@ import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
+import java.nio.charset.Charset;
 import java.text.DecimalFormat;
-import java.util.Enumeration;
 import java.util.List;
 import java.util.Locale;
 import java.util.zip.ZipEntry;
+import java.util.zip.ZipException;
+import java.util.zip.ZipInputStream;
 import java.util.zip.ZipOutputStream;
 
 /** Operações de ficheiros. Devem ser chamadas fora da thread principal. */
@@ -106,7 +103,7 @@ public final class FileOps {
 
     /**
      * Descompacta ZIP, 7Z ou RAR para uma pasta com o nome do arquivo, dentro de destinoDir.
-     * Bloqueia entradas que tentem sair da pasta de destino (ex.: ../../arquivo).
+     * Se falhar, apaga a pasta parcial. Entradas que saiam da pasta de destino são recusadas.
      */
     public static File descompactar(File arquivo, File destinoDir) throws IOException {
         String n = arquivo.getName().toLowerCase(Locale.ROOT);
@@ -114,61 +111,54 @@ public final class FileOps {
         int dot = nome.lastIndexOf('.');
         if (dot > 0) nome = nome.substring(0, dot);
 
+        if (!(n.endsWith(".zip") || n.endsWith(".7z") || n.endsWith(".rar"))) {
+            throw new IOException("Formato não suportado");
+        }
+
         File dest = uniqueName(destinoDir, nome);
         if (!dest.mkdirs() && !dest.isDirectory()) throw new IOException("Não foi possível criar a pasta");
-        String raiz = dest.getCanonicalPath() + File.separator;
-
-        if (n.endsWith(".zip")) {
-            extrairZip(arquivo, dest, raiz);
-        } else if (n.endsWith(".7z")) {
-            extrair7z(arquivo, dest, raiz);
-        } else if (n.endsWith(".rar")) {
-            extrairRar(arquivo, dest, raiz);
-        } else {
-            throw new IOException("Formato não suportado");
+        try {
+            String raiz = dest.getCanonicalPath() + File.separator;
+            if (n.endsWith(".zip")) {
+                extrairZip(arquivo, dest, raiz);
+            } else if (n.endsWith(".7z")) {
+                ArquivoSevenZip.extrair(arquivo, dest, raiz);
+            } else {
+                ArquivoRar.extrair(arquivo, dest, raiz);
+            }
+        } catch (IOException e) {
+            deleteRecursive(dest);
+            throw e;
+        } catch (Throwable t) {
+            // Biblioteca indisponível neste aparelho (ex.: versão de Android antiga)
+            deleteRecursive(dest);
+            throw new IOException("Não foi possível descompactar este formato neste aparelho ("
+                    + t.getClass().getSimpleName() + ")");
         }
         return dest;
     }
 
-    /** Nomes de ZIP criados no Windows costumam estar em CP850; tenta UTF-8 e depois CP850. */
+    /**
+     * ZIP com java.util.zip (disponível em todas as versões do Android).
+     * Tenta UTF-8; se os nomes não forem UTF-8 (ZIP feito no Windows), tenta CP850.
+     */
     private static void extrairZip(File arquivo, File dest, String raiz) throws IOException {
-        String codificacao = "UTF-8";
-        try (ZipFile teste = new ZipFile(arquivo, "UTF-8")) {
-            Enumeration<ZipArchiveEntry> en = teste.getEntries();
-            while (en.hasMoreElements()) {
-                if (en.nextElement().getName().indexOf('\uFFFD') >= 0) {
-                    codificacao = "CP850";
-                    break;
-                }
+        try {
+            extrairZipCom(arquivo, dest, raiz, null);
+        } catch (IllegalArgumentException nomesInvalidos) {
+            if (Build.VERSION.SDK_INT < 24) {
+                throw new IOException("Nomes de ficheiros não suportados neste aparelho");
             }
-        }
-
-        try (ZipFile zf = new ZipFile(arquivo, codificacao)) {
-            Enumeration<ZipArchiveEntry> en = zf.getEntries();
-            while (en.hasMoreElements()) {
-                ZipArchiveEntry e = en.nextElement();
-                if (e.getGeneralPurposeBit().usesEncryption()) {
-                    throw new IOException("Arquivo protegido por senha");
-                }
-                File out = seguro(dest, e.getName(), raiz);
-                if (e.isDirectory()) {
-                    out.mkdirs();
-                } else {
-                    File pai = out.getParentFile();
-                    if (pai != null) pai.mkdirs();
-                    try (InputStream in = zf.getInputStream(e);
-                         OutputStream os = new FileOutputStream(out)) {
-                        copiar(in, os);
-                    }
-                }
-            }
+            extrairZipCom(arquivo, dest, raiz, Charset.forName("CP850"));
         }
     }
 
-    private static void extrair7z(File arquivo, File dest, String raiz) throws IOException {
-        try (SevenZFile sz = new SevenZFile(arquivo)) {
-            SevenZArchiveEntry e;
-            while ((e = sz.getNextEntry()) != null) {
+    private static void extrairZipCom(File arquivo, File dest, String raiz, Charset cs) throws IOException {
+        InputStream base = new BufferedInputStream(new FileInputStream(arquivo));
+        ZipInputStream zis = cs == null ? new ZipInputStream(base) : new ZipInputStream(base, cs);
+        try {
+            ZipEntry e;
+            while ((e = zis.getNextEntry()) != null) {
                 File out = seguro(dest, e.getName(), raiz);
                 if (e.isDirectory()) {
                     out.mkdirs();
@@ -176,45 +166,23 @@ public final class FileOps {
                     File pai = out.getParentFile();
                     if (pai != null) pai.mkdirs();
                     try (OutputStream os = new FileOutputStream(out)) {
-                        byte[] buf = new byte[65536];
-                        int n;
-                        while ((n = sz.read(buf)) > 0) os.write(buf, 0, n);
+                        copiar(zis, os);
                     }
                 }
+                zis.closeEntry();
             }
-        } catch (IOException e) {
-            if (e.getMessage() != null && e.getMessage().toLowerCase(Locale.ROOT).contains("password")) {
+        } catch (ZipException e) {
+            if (e.getMessage() != null && e.getMessage().toLowerCase(Locale.ROOT).contains("encrypt")) {
                 throw new IOException("Arquivo protegido por senha");
             }
             throw e;
-        }
-    }
-
-    private static void extrairRar(File arquivo, File dest, String raiz) throws IOException {
-        try (Archive rar = new Archive(arquivo)) {
-            if (rar.isEncrypted()) {
-                throw new IOException("Arquivo protegido por senha");
-            }
-            FileHeader fh;
-            while ((fh = rar.nextFileHeader()) != null) {
-                File out = seguro(dest, fh.getFileName().replace('\\', '/'), raiz);
-                if (fh.isDirectory()) {
-                    out.mkdirs();
-                } else {
-                    File pai = out.getParentFile();
-                    if (pai != null) pai.mkdirs();
-                    try (OutputStream os = new FileOutputStream(out)) {
-                        rar.extractFile(fh, os);
-                    }
-                }
-            }
-        } catch (com.github.junrar.exception.RarException e) {
-            throw new IOException("Arquivo RAR inválido ou não suportado");
+        } finally {
+            zis.close();
         }
     }
 
     /** Resolve o caminho de uma entrada e recusa qualquer um que saia da pasta de destino. */
-    private static File seguro(File dest, String entrada, String raiz) throws IOException {
+    static File seguro(File dest, String entrada, String raiz) throws IOException {
         File out = new File(dest, entrada);
         if (!out.getCanonicalPath().startsWith(raiz)) {
             throw new IOException("Entrada inválida no arquivo: " + entrada);
