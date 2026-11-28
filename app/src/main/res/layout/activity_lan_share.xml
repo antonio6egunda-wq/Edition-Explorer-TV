@@ -28,7 +28,7 @@
             android:layout_marginTop="32dp"
             android:orientation="horizontal">
 
-            <!-- Lado esquerdo: card com o código QR -->
+            <!-- Esquerda: QR code -->
             <LinearLayout
                 android:id="@+id/cardQr"
                 android:layout_width="0dp"
@@ -60,18 +60,9 @@
                         android:textColor="@color/text_secondary"
                         android:textSize="18sp" />
                 </FrameLayout>
-
-                <TextView
-                    android:id="@+id/tvUrl"
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:layout_marginTop="20dp"
-                    android:textColor="@color/text_secondary"
-                    android:textSize="16sp"
-                    android:visibility="gone" />
             </LinearLayout>
 
-            <!-- Lado direito: controlos -->
+            <!-- Direita: endereço, código e controlos -->
             <LinearLayout
                 android:layout_width="0dp"
                 android:layout_height="wrap_content"
@@ -88,6 +79,38 @@
                     android:textColor="@color/text_primary"
                     android:textSize="22sp" />
 
+                <TextView
+                    android:id="@+id/tvUrl"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="16dp"
+                    android:textColor="@color/accent"
+                    android:textSize="26sp"
+                    android:textStyle="bold" />
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="16dp"
+                    android:text="@string/codigo_acesso"
+                    android:textColor="@color/text_secondary"
+                    android:textSize="16sp" />
+
+                <TextView
+                    android:id="@+id/tvCodigo"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:textColor="@color/text_primary"
+                    android:textSize="56sp"
+                    android:textStyle="bold" />
+
+                <TextView
+                    android:id="@+id/tvIps"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:textColor="@color/text_secondary"
+                    android:textSize="15sp" />
+
                 <Button
                     android:id="@+id/btnAtivar"
                     style="@style/Button.Explorer"
@@ -99,7 +122,7 @@
                 <LinearLayout
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:layout_marginTop="28dp"
+                    android:layout_marginTop="24dp"
                     android:gravity="center_vertical"
                     android:orientation="horizontal">
 
@@ -122,29 +145,55 @@
                     android:id="@+id/tvUpload"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:layout_marginTop="28dp"
+                    android:layout_marginTop="24dp"
                     android:textColor="@color/success"
                     android:textSize="18sp" />
-
-                <TextView
-                    android:id="@+id/tvEnvio"
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:layout_marginTop="12dp"
-                    android:textColor="@color/text_secondary"
-                    android:textSize="18sp" />
-
-                <Button
-                    android:id="@+id/btnLimpar"
-                    style="@style/Button.Explorer"
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:layout_marginTop="16dp"
-                    android:text="@string/btn_limpar"
-                    android:visibility="gone" />
             </LinearLayout>
         </LinearLayout>
 
+        <!-- Lista de ficheiros marcados para enviar -->
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="40dp"
+            android:text="@string/ficheiros_enviar"
+            android:textColor="@color/text_secondary"
+            android:textSize="18sp"
+            android:textStyle="bold" />
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="14dp"
+            android:background="@drawable/bg_card"
+            android:orientation="vertical"
+            android:padding="24dp">
+
+            <TextView
+                android:id="@+id/tvEnvioVazio"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="@string/envio_vazio"
+                android:textColor="@color/text_secondary"
+                android:textSize="18sp" />
+
+            <LinearLayout
+                android:id="@+id/llEnvio"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical" />
+
+            <Button
+                android:id="@+id/btnLimpar"
+                style="@style/Button.Explorer"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="8dp"
+                android:text="@string/btn_limpar"
+                android:visibility="gone" />
+        </LinearLayout>
+
+        <!-- Recebidos e Enviar da TV -->
         <TextView
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"

@@ -88,4 +88,24 @@
     <string name="envio_vazio">Nenhum ficheiro marcado para enviar.</string>
     <string name="btn_limpar">Limpar seleção</string>
     <string name="n_dispositivos">%d dispositivos ligados</string>
+    <!-- Atualização 2.1 -->
+    <string name="pasta_anterior">Pasta anterior</string>
+    <string name="menu_compactar">Compactar</string>
+    <string name="menu_descompactar">Descompactar</string>
+    <string name="ok_compactado">Compactado</string>
+    <string name="ok_descompactado">Descompactado</string>
+    <string name="aguarde">Aguarde a operação atual.</string>
+    <string name="codigo_acesso">Código de acesso</string>
+    <string name="enderecos_outros">Outros endereços: %s</string>
+    <string name="ficheiros_enviar">Ficheiros para enviar</string>
+    <string name="remover">Remover</string>
+    <string name="cabecalho_nome">Nome</string>
+    <string name="cabecalho_tipo">Tipo</string>
+    <string name="cabecalho_tamanho">Tamanho</string>
+    <string name="cabecalho_data">Data</string>
+    <!-- Arquivos -->
+    <string name="descompactar_titulo">Descompactar?</string>
+    <string name="descompactar_confirma">Descompactar \"%s\" para uma pasta nova?</string>
+    <string name="descompactar">Descompactar</string>
+    <string name="abrir_com">Abrir com</string>
 </resources>

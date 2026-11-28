@@ -26,6 +26,8 @@ Além de navegar pelos ficheiros do aparelho, permite **enviar e receber ficheir
   - *Compacto:* uma linha por ficheiro.
   - *Grade:* miniaturas de fotos e vídeos.
 - **Ordenação** por nome ou por data.
+- **Arquivos compactados:** ao tocar num ZIP, 7Z ou RAR, a app pergunta se quer descompactá-lo para uma pasta nova. Também está disponível no menu de ações. Não suporta arquivos protegidos por senha.
+- **Compactar:** cria um ZIP a partir de um ficheiro ou pasta.
 - **Ações sobre ficheiros** (tecla **Menu** ou **Y** do comando, ou pressão longa):
   - Copiar e colar
   - Recortar e colar (mover)

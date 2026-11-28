@@ -10,14 +10,15 @@ import java.util.HashSet;
 import java.util.Set;
 
 /**
- * Controla o ponto azul de "novo". Só se aplica à pasta Download.
- * Na primeira execução, os ficheiros que já existem são marcados como vistos.
+ * Controla o ponto azul de "novo" na pasta Download.
+ * Um ficheiro é novo se foi modificado depois da data de instalação (baseline)
+ * e ainda não foi aberto. Ficheiros anteriores à instalação nunca são novos.
  */
 public final class SeenStore {
 
     private static final String PREFS = "seen";
     private static final String KEY_SEEN = "seen_paths";
-    private static final String KEY_INIT = "initialized";
+    private static final String KEY_BASELINE = "baseline_ms";
 
     private SeenStore() {
     }
@@ -30,15 +31,14 @@ public final class SeenStore {
         return ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE);
     }
 
+    /** Só grava a data de referência uma vez, na primeira execução com permissão. */
     public static void initIfNeeded(Context ctx) {
         SharedPreferences p = prefs(ctx);
-        if (p.getBoolean(KEY_INIT, false)) return;
-        Set<String> all = new HashSet<>();
-        File[] files = downloadsDir().listFiles();
-        if (files != null) {
-            for (File f : files) all.add(f.getAbsolutePath());
-        }
-        p.edit().putStringSet(KEY_SEEN, all).putBoolean(KEY_INIT, true).apply();
+        if (p.contains(KEY_BASELINE)) return;
+        p.edit()
+                .putLong(KEY_BASELINE, System.currentTimeMillis())
+                .putStringSet(KEY_SEEN, new HashSet<String>())
+                .apply();
     }
 
     public static boolean isInDownloads(File f) {
@@ -48,7 +48,9 @@ public final class SeenStore {
 
     public static boolean isNew(Context ctx, File f) {
         if (!isInDownloads(f) || !f.isFile()) return false;
-        return !seen(ctx).contains(f.getAbsolutePath());
+        long baseline = prefs(ctx).getLong(KEY_BASELINE, 0L);
+        if (baseline == 0L) return false;
+        return f.lastModified() > baseline && !seen(ctx).contains(f.getAbsolutePath());
     }
 
     public static void markSeen(Context ctx, File f) {

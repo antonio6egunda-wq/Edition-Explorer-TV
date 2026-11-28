@@ -32,6 +32,9 @@
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:background="@drawable/bg_seg_button"
+            android:drawableStart="@drawable/ic_list_detail"
+            android:drawablePadding="10dp"
+            android:drawableTint="@color/selector_seg_text"
             android:text="@string/browser_detalhado"
             android:textColor="@color/selector_seg_text" />
 
@@ -42,6 +45,9 @@
             android:layout_height="wrap_content"
             android:layout_marginStart="12dp"
             android:background="@drawable/bg_seg_button"
+            android:drawableStart="@drawable/ic_list"
+            android:drawablePadding="10dp"
+            android:drawableTint="@color/selector_seg_text"
             android:text="@string/browser_compacto"
             android:textColor="@color/selector_seg_text" />
 
@@ -52,6 +58,9 @@
             android:layout_height="wrap_content"
             android:layout_marginStart="12dp"
             android:background="@drawable/bg_seg_button"
+            android:drawableStart="@drawable/ic_grid"
+            android:drawablePadding="10dp"
+            android:drawableTint="@color/selector_seg_text"
             android:text="@string/browser_grade"
             android:textColor="@color/selector_seg_text" />
 
@@ -76,6 +85,55 @@
             android:visibility="gone" />
     </LinearLayout>
 
+    <LinearLayout
+        android:id="@+id/layoutCabecalho"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="16dp"
+        android:orientation="horizontal"
+        android:paddingStart="48dp"
+        android:paddingEnd="64dp"
+        android:visibility="gone">
+
+        <View
+            android:layout_width="28dp"
+            android:layout_height="1dp" />
+
+        <TextView
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="16dp"
+            android:layout_weight="1"
+            android:text="@string/cabecalho_nome"
+            android:textColor="@color/text_secondary"
+            android:textSize="14sp"
+            android:textStyle="bold" />
+
+        <TextView
+            android:layout_width="130dp"
+            android:layout_height="wrap_content"
+            android:text="@string/cabecalho_tipo"
+            android:textColor="@color/text_secondary"
+            android:textSize="14sp"
+            android:textStyle="bold" />
+
+        <TextView
+            android:layout_width="150dp"
+            android:layout_height="wrap_content"
+            android:text="@string/cabecalho_tamanho"
+            android:textColor="@color/text_secondary"
+            android:textSize="14sp"
+            android:textStyle="bold" />
+
+        <TextView
+            android:layout_width="200dp"
+            android:layout_height="wrap_content"
+            android:text="@string/cabecalho_data"
+            android:textColor="@color/text_secondary"
+            android:textSize="14sp"
+            android:textStyle="bold" />
+    </LinearLayout>
+
     <TextView
         android:id="@+id/tvEmpty"
         android:layout_width="match_parent"
@@ -88,6 +146,8 @@
 
     <androidx.recyclerview.widget.RecyclerView
         android:id="@+id/rvFiles"
+        android:focusable="true"
+        android:focusableInTouchMode="true"
         android:layout_width="match_parent"
         android:layout_height="0dp"
         android:layout_weight="1"

@@ -22,9 +22,11 @@ import java.util.Map;
 import fi.iki.elonen.NanoHTTPD;
 
 /**
- * Servidor local com duas funções, sempre protegido pelo token do QR code:
- * - receber ficheiros enviados do telemóvel (POST) para a pasta Download;
+ * Servidor local com três funções, protegido por um código de 5 dígitos:
+ * - página de login (para digitar o código no PC);
+ * - receber ficheiros enviados do telemóvel/PC (POST) para a pasta Download;
  * - oferecer para descarregar os ficheiros marcados na TV (/download/N).
+ * Depois de 5 códigos errados o servidor bloqueia até ser reiniciado na TV.
  */
 public class LanShareServer extends NanoHTTPD {
 
@@ -32,34 +34,43 @@ public class LanShareServer extends NanoHTTPD {
         void onFileUploaded(String fileName);
     }
 
+    private static final int MAX_FALHAS = 5;
+    private static final int PORTA_PREFERIDA = 8080;
+    private static final String DOWNLOAD_PREFIX = "/download/";
+
     private final File targetDir;
-    private final String token;
+    private final String codigo;
     private final OnFileUploadedListener listener;
     private volatile List<File> shareFiles = Collections.emptyList();
+    private volatile int falhas = 0;
 
-    private static final String ALFABETO = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
-    private static final String DOWNLOAD_PREFIX = "/download/";
+    /** Porta fixa 8080 para ser fácil de escrever no PC; se estiver ocupada, usa uma livre. */
+    public static int escolherPorta() {
+        try (ServerSocket s = new ServerSocket(PORTA_PREFERIDA)) {
+            return PORTA_PREFERIDA;
+        } catch (IOException e) {
+            return obterPortaAleatoriaLivre();
+        }
+    }
 
     public static int obterPortaAleatoriaLivre() {
         try (ServerSocket socket = new ServerSocket(0)) {
             return socket.getLocalPort();
         } catch (IOException e) {
-            return 8899;
+            return PORTA_PREFERIDA;
         }
     }
 
-    /** Token aleatório de 10 caracteres: só quem lê o QR code acede aos ficheiros. */
+    /** Código de acesso de 5 dígitos (10000 a 99999). */
     public static String gerarToken() {
         SecureRandom rnd = new SecureRandom();
-        StringBuilder sb = new StringBuilder();
-        for (int i = 0; i < 10; i++) sb.append(ALFABETO.charAt(rnd.nextInt(ALFABETO.length())));
-        return sb.toString();
+        return String.valueOf(10000 + rnd.nextInt(90000));
     }
 
-    public LanShareServer(int port, File targetDir, String token, OnFileUploadedListener listener) {
+    public LanShareServer(int port, File targetDir, String codigo, OnFileUploadedListener listener) {
         super(port);
         this.targetDir = targetDir;
-        this.token = token;
+        this.codigo = codigo;
         this.listener = listener;
     }
 
@@ -68,13 +79,32 @@ public class LanShareServer extends NanoHTTPD {
         shareFiles = new ArrayList<>(files);
     }
 
+    public boolean bloqueado() {
+        return falhas >= MAX_FALHAS;
+    }
+
     @Override
     public Response serve(IHTTPSession session) {
-        List<String> t = session.getParameters().get("t");
-        if (t == null || t.isEmpty() || !token.equals(t.get(0))) {
-            return newFixedLengthResponse(Response.Status.FORBIDDEN, "text/plain; charset=utf-8",
-                    "Acesso negado. Leia o código QR no ecrã da TV.");
+        if (bloqueado()) {
+            return texto(Response.Status.FORBIDDEN,
+                    "Acesso bloqueado após várias tentativas. Reinicie a transferência na TV.");
         }
+
+        List<String> t = session.getParameters().get("t");
+        if (t == null || t.isEmpty()) {
+            if (Method.POST.equals(session.getMethod())) {
+                return texto(Response.Status.FORBIDDEN, "Código em falta.");
+            }
+            return html(gerarPaginaLogin());
+        }
+
+        if (!codigo.equals(t.get(0))) {
+            falhas++;
+            int restantes = Math.max(0, MAX_FALHAS - falhas);
+            return texto(Response.Status.FORBIDDEN,
+                    "Código incorreto. Tentativas restantes: " + restantes);
+        }
+
         if (Method.POST.equals(session.getMethod())) {
             return receberFicheiro(session);
         }
@@ -82,10 +112,10 @@ public class LanShareServer extends NanoHTTPD {
         if (uri != null && uri.startsWith(DOWNLOAD_PREFIX)) {
             return enviarFicheiro(uri.substring(DOWNLOAD_PREFIX.length()));
         }
-        return newFixedLengthResponse(Response.Status.OK, "text/html; charset=utf-8", gerarPaginaWeb());
+        return html(gerarPaginaPrincipal());
     }
 
-    // ---------- Receber do telemóvel ----------
+    // ---------- Receber ----------
 
     private Response receberFicheiro(IHTTPSession session) {
         try {
@@ -94,7 +124,7 @@ public class LanShareServer extends NanoHTTPD {
 
             String tempFilePath = files.get("file");
             if (tempFilePath == null) {
-                return newFixedLengthResponse(Response.Status.BAD_REQUEST, "text/plain", "Nenhum ficheiro recebido");
+                return texto(Response.Status.BAD_REQUEST, "Nenhum ficheiro recebido");
             }
 
             List<String> nomes = session.getParameters().get("file");
@@ -102,24 +132,28 @@ public class LanShareServer extends NanoHTTPD {
                     ? nomes.get(0)
                     : "ficheiro_" + System.currentTimeMillis();
 
-            // Impede path traversal (ex.: ../../algo) mantendo só o nome do ficheiro
+            // Só o nome do ficheiro, sem caminhos (evita ../../algo)
             File destFile = escolherNomeLivre(new File(originalName).getName());
 
             try (InputStream in = new FileInputStream(tempFilePath);
                  OutputStream out = new FileOutputStream(destFile)) {
-                byte[] buf = new byte[8192];
-                int len;
-                while ((len = in.read(buf)) > 0) {
-                    out.write(buf, 0, len);
-                }
+                copiar(in, out);
             }
 
             if (listener != null) {
                 listener.onFileUploaded(destFile.getName());
             }
-            return newFixedLengthResponse(Response.Status.OK, "text/plain", "OK");
+            return texto(Response.Status.OK, "OK");
         } catch (Exception e) {
-            return newFixedLengthResponse(Response.Status.INTERNAL_ERROR, "text/plain", "Erro: " + e.getMessage());
+            return texto(Response.Status.INTERNAL_ERROR, "Erro: " + e.getMessage());
+        }
+    }
+
+    private void copiar(InputStream in, OutputStream out) throws IOException {
+        byte[] buf = new byte[8192];
+        int len;
+        while ((len = in.read(buf)) > 0) {
+            out.write(buf, 0, len);
         }
     }
 
@@ -142,7 +176,7 @@ public class LanShareServer extends NanoHTTPD {
         return dest;
     }
 
-    // ---------- Enviar para o telemóvel ----------
+    // ---------- Enviar para o telemóvel/PC ----------
 
     private Response enviarFicheiro(String indice) {
         int i;
@@ -164,12 +198,20 @@ public class LanShareServer extends NanoHTTPD {
                     "attachment; filename=\"" + nomeAscii(f.getName()) + "\"; filename*=UTF-8''" + codificar(f.getName()));
             return r;
         } catch (IOException e) {
-            return newFixedLengthResponse(Response.Status.INTERNAL_ERROR, "text/plain", "Erro ao ler o ficheiro");
+            return texto(Response.Status.INTERNAL_ERROR, "Erro ao ler o ficheiro");
         }
     }
 
     private Response naoEncontrado() {
-        return newFixedLengthResponse(Response.Status.NOT_FOUND, "text/plain; charset=utf-8", "Ficheiro não encontrado");
+        return texto(Response.Status.NOT_FOUND, "Ficheiro não encontrado");
+    }
+
+    private Response texto(Response.IStatus status, String msg) {
+        return newFixedLengthResponse(status, "text/plain; charset=utf-8", msg);
+    }
+
+    private Response html(String corpo) {
+        return newFixedLengthResponse(Response.Status.OK, "text/html; charset=utf-8", corpo);
     }
 
     private static String mimeOf(File f) {
@@ -192,10 +234,15 @@ public class LanShareServer extends NanoHTTPD {
         }
     }
 
-    // ---------- Página web ----------
+    // ---------- Páginas web ----------
 
-    private String gerarPaginaWeb() {
+    private String gerarPaginaLogin() {
+        return LOGIN.replace("{{NOME}}", "Edition Explorer");
+    }
+
+    private String gerarPaginaPrincipal() {
         return PAGINA.replace("{{NOME}}", escaparHtml(targetDir.getName()))
+                .replace("{{TOKEN}}", codigo)
                 .replace("{{DOWNLOADS}}", gerarListaDownloads());
     }
 
@@ -205,6 +252,9 @@ public class LanShareServer extends NanoHTTPD {
             return "<p class=\"empty\">Nenhum ficheiro selecionado na TV.</p>";
         }
         StringBuilder sb = new StringBuilder();
+        sb.append("<button class=\"btn\" id=\"btnTudo\">Descarregar tudo (")
+                .append(list.size()).append(")</button>");
+        sb.append("<div class=\"lista\">");
         for (int i = 0; i < list.size(); i++) {
             File f = list.get(i);
             String nome = escaparHtml(f.getName());
@@ -215,11 +265,14 @@ public class LanShareServer extends NanoHTTPD {
                     .append("<div class=\"size\">").append(FileOps.formatSize(f.length())).append("</div>")
                     .append("<div class=\"bar small\"><i></i></div>")
                     .append("</div>")
-                    .append("<button class=\"btn btn-sm\" data-url=\"/download/").append(i)
-                    .append("?t=").append(token).append("\" data-name=\"").append(nome)
+                    .append("<button class=\"btn btn-sm\" data-index=\"").append(i)
+                    .append("\" data-url=\"/download/").append(i)
+                    .append("?t=").append(codigo)
+                    .append("\" data-name=\"").append(nome)
                     .append("\" data-size=\"").append(f.length()).append("\">Descarregar</button>")
                     .append("</div>");
         }
+        sb.append("</div>");
         return sb.toString();
     }
 
@@ -242,6 +295,43 @@ public class LanShareServer extends NanoHTTPD {
                 .replace("\"", "&quot;")
                 .replace("'", "&#39;");
     }
+
+    private static final String LOGIN = """
+            <!DOCTYPE html>
+            <html lang="pt"><head><meta charset="UTF-8">
+            <meta name="viewport" content="width=device-width, initial-scale=1.0">
+            <title>Edition Explorer</title>
+            <style>
+            :root{--bg:#0b1020;--card:#151c2e;--line:#243047;--acc:#4fc3f7;--acc2:#2979ff;--txt:#eef2f8;--mut:#8b96ab;}
+            *{box-sizing:border-box}
+            body{margin:0;min-height:100vh;font-family:system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;color:var(--txt);
+              background:radial-gradient(900px 500px at 10% -10%,#17305c 0%,transparent 60%),var(--bg);
+              display:flex;align-items:center;justify-content:center;padding:20px}
+            .card{width:100%;max-width:400px;background:var(--card);border:1px solid var(--line);border-radius:24px;padding:28px;text-align:center}
+            h1{margin:0;font-size:24px;color:var(--acc)}
+            p{color:var(--mut);font-size:15px;margin:10px 0 20px}
+            input{width:100%;font-size:32px;letter-spacing:10px;text-align:center;padding:14px;border-radius:18px;
+              border:1.5px solid var(--line);background:#0f1626;color:var(--txt);outline:none}
+            input:focus{border-color:var(--acc)}
+            .btn{display:block;width:100%;border:0;border-radius:999px;padding:14px 20px;font-size:16px;font-weight:600;
+              color:#fff;background:linear-gradient(135deg,var(--acc2),var(--acc));margin-top:16px;cursor:pointer}
+            </style></head><body>
+            <div class="card">
+              <h1>Edition Explorer</h1>
+              <p>Digite o código de 5 dígitos que aparece no ecrã da TV</p>
+              <input id="c" type="tel" inputmode="numeric" maxlength="5" autocomplete="off" placeholder="00000">
+              <button class="btn" id="entrar">Entrar</button>
+            </div>
+            <script>
+            var c=document.getElementById('c');
+            function entrar(){
+              var v=c.value.replace(/\\D/g,'');
+              if(v.length===5){location.href='/?t='+v;}
+            }
+            document.getElementById('entrar').addEventListener('click',entrar);
+            c.addEventListener('keydown',function(e){if(e.key==='Enter')entrar();});
+            </script></body></html>
+            """;
 
     private static final String PAGINA = """
             <!DOCTYPE html>
@@ -267,20 +357,21 @@ public class LanShareServer extends NanoHTTPD {
               color:#fff;background:linear-gradient(135deg,var(--acc2),var(--acc));text-align:center;text-decoration:none;
               margin-top:14px;cursor:pointer;box-shadow:0 8px 20px -8px rgba(41,121,255,.6)}
             .btn:disabled{opacity:.45;box-shadow:none;cursor:default}
+            .btn.feito{background:#243047;box-shadow:none;color:var(--mut)}
             .btn-sm{display:inline-block;width:auto;margin:0;padding:9px 16px;font-size:14px;box-shadow:none;white-space:nowrap}
             .bar{display:none;height:8px;border-radius:999px;background:#0f1626;overflow:hidden;margin-top:16px}
             .bar i{display:block;height:100%;width:0;background:linear-gradient(90deg,var(--acc2),var(--acc));transition:width .2s}
+            .bar.small{height:6px;margin-top:8px}
             #status{margin-top:12px;font-size:14px;text-align:center;min-height:18px;color:var(--mut)}
+            .lista{margin-top:14px}
             .item{display:flex;align-items:center;gap:12px;padding:12px;border-radius:18px;background:#0f1626;
               border:1px solid var(--line);margin-bottom:10px}
-            .item:last-child{margin-bottom:0}
             .ico{width:44px;height:44px;flex:0 0 44px;border-radius:14px;background:#1a2440;display:flex;
               align-items:center;justify-content:center;font-size:22px}
             .meta{flex:1;min-width:0}
             .name{font-size:15px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
             .size{font-size:12px;color:var(--mut);margin-top:2px}
             .empty{color:var(--mut);font-size:14px;text-align:center;margin:8px 0}
-            .bar.small{height:6px;margin-top:8px}
             </style></head><body>
             <div class="wrap">
               <header>
@@ -306,6 +397,7 @@ public class LanShareServer extends NanoHTTPD {
               </section>
             </div>
             <script>
+            var TOKEN='{{TOKEN}}';
             var input=document.getElementById('fileInput');
             var btn=document.getElementById('btnEnviar');
             var label=document.getElementById('fileLabel');
@@ -355,61 +447,94 @@ public class LanShareServer extends NanoHTTPD {
             </script>
             <script>
             var LIMITE_BLOB=1500*1024*1024;
-            document.querySelectorAll('[data-url]').forEach(function(btn){
-              btn.addEventListener('click',function(){baixar(btn);});
+            var CHAVE='edl_'+TOKEN+'_';
+            function feito(i){try{return localStorage.getItem(CHAVE+i)==='1';}catch(e){return false;}}
+            function marcarFeito(i){try{localStorage.setItem(CHAVE+i,'1');}catch(e){}}
+            function botoes(){return document.querySelectorAll('[data-url]');}
+            function marcarBotao(b){b.disabled=false;b.innerText='Descarregado';b.classList.add('feito');}
+            function aplicarEstado(){
+              botoes().forEach(function(b){
+                if(feito(b.getAttribute('data-index')))marcarBotao(b);
+              });
+            }
+            function descarregarComConfirmacao(b){
+              if(feito(b.getAttribute('data-index'))&&!confirm('Já descarregou este ficheiro. Descarregar de novo?'))return;
+              baixar(b);
+            }
+            function baixar(b){
+              return new Promise(function(resolve){
+                var url=b.getAttribute('data-url');
+                var nome=b.getAttribute('data-name');
+                var idx=b.getAttribute('data-index');
+                var tamanho=parseInt(b.getAttribute('data-size'),10)||0;
+                if(tamanho>LIMITE_BLOB){
+                  var a0=document.createElement('a');
+                  a0.href=url;a0.download=nome;
+                  document.body.appendChild(a0);a0.click();a0.remove();
+                  marcarFeito(idx);marcarBotao(b);
+                  resolve();
+                  return;
+                }
+                var item=b.closest('.item');
+                var pb=item.querySelector('.bar');
+                var pi=pb.querySelector('i');
+                b.disabled=true;
+                b.innerText='0%';
+                pb.style.display='block';
+                var xhr=new XMLHttpRequest();
+                xhr.open('GET',url);
+                xhr.responseType='blob';
+                xhr.onprogress=function(e){
+                  if(e.lengthComputable){
+                    var p=Math.round(e.loaded/e.total*100);
+                    pi.style.width=p+'%';
+                    b.innerText=p+'%';
+                  }
+                };
+                xhr.onload=function(){
+                  if(xhr.status===200){
+                    var u=URL.createObjectURL(xhr.response);
+                    var a=document.createElement('a');
+                    a.href=u;a.download=nome;
+                    document.body.appendChild(a);a.click();a.remove();
+                    setTimeout(function(){URL.revokeObjectURL(u);},60000);
+                    pi.style.width='100%';
+                    marcarFeito(idx);
+                    marcarBotao(b);
+                  }else{
+                    b.disabled=false;
+                    b.innerText='Erro, tentar de novo';
+                  }
+                  setTimeout(function(){pb.style.display='none';pi.style.width='0%';},1500);
+                  resolve();
+                };
+                xhr.onerror=function(){
+                  b.disabled=false;
+                  b.innerText='Erro, tentar de novo';
+                  resolve();
+                };
+                xhr.send();
+              });
+            }
+            botoes().forEach(function(b){
+              b.addEventListener('click',function(){descarregarComConfirmacao(b);});
             });
-            function baixar(btn){
-              var url=btn.getAttribute('data-url');
-              var nome=btn.getAttribute('data-name');
-              var tamanho=parseInt(btn.getAttribute('data-size'),10)||0;
-              if(tamanho>LIMITE_BLOB){window.location.href=url;return;}
-              var item=btn.closest('.item');
-              var pb=item.querySelector('.bar');
-              var pi=pb.querySelector('i');
-              btn.disabled=true;
-              btn.innerText='0%';
-              pb.style.display='block';
-              var xhr=new XMLHttpRequest();
-              xhr.open('GET',url);
-              xhr.responseType='blob';
-              xhr.onprogress=function(e){
-                if(e.lengthComputable){
-                  var p=Math.round(e.loaded/e.total*100);
-                  pi.style.width=p+'%';
-                  btn.innerText=p+'%';
+            var btnTudo=document.getElementById('btnTudo');
+            if(btnTudo){
+              btnTudo.addEventListener('click',async function(){
+                var pendentes=Array.prototype.slice.call(botoes()).filter(function(b){
+                  return !feito(b.getAttribute('data-index'));
+                });
+                if(!pendentes.length){alert('Todos os ficheiros já foram descarregados.');return;}
+                btnTudo.disabled=true;
+                for(var k=0;k<pendentes.length;k++){
+                  btnTudo.innerText='A descarregar '+(k+1)+' de '+pendentes.length;
+                  await baixar(pendentes[k]);
                 }
-              };
-              xhr.onload=function(){
-                if(xhr.status===200){
-                  var blobUrl=URL.createObjectURL(xhr.response);
-                  var a=document.createElement('a');
-                  a.href=blobUrl;
-                  a.download=nome;
-                  document.body.appendChild(a);
-                  a.click();
-                  a.remove();
-                  setTimeout(function(){URL.revokeObjectURL(blobUrl);},60000);
-                  pi.style.width='100%';
-                  btn.innerText='Concluído';
-                }else{
-                  btn.innerText='Erro';
-                }
-                finalizar(btn,pb);
-              };
-              xhr.onerror=function(){
-                btn.innerText='Erro';
-                finalizar(btn,pb);
-              };
-              xhr.send();
+                btnTudo.innerText='Concluído';
+              });
             }
-            function finalizar(btn,pb){
-              setTimeout(function(){
-                btn.innerText='Descarregar';
-                btn.disabled=false;
-                pb.style.display='none';
-                pb.querySelector('i').style.width='0%';
-              },2500);
-            }
+            aplicarEstado();
             </script></body></html>
             """;
 }

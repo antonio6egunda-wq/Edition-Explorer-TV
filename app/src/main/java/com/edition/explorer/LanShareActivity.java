@@ -7,9 +7,11 @@ import android.os.Bundle;
 import android.os.Environment;
 import android.os.Handler;
 import android.os.Looper;
+import android.view.LayoutInflater;
 import android.view.View;
 import android.widget.Button;
 import android.widget.ImageView;
+import android.widget.LinearLayout;
 import android.widget.Switch;
 import android.widget.TextView;
 import android.widget.Toast;
@@ -24,16 +26,20 @@ import java.io.File;
 import java.net.Inet4Address;
 import java.net.InetAddress;
 import java.net.NetworkInterface;
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import java.util.Locale;
 
-/** Página de transferência: QR code à esquerda, controlos à direita e os banners em baixo. */
+/** Página de transferência: QR code e código de acesso, lista de envio e banners em baixo. */
 public class LanShareActivity extends AppCompatActivity {
 
     private static final long AUTO_OFF_MS = 10L * 60L * 1000L;
 
     private ImageView ivQr;
-    private TextView tvQrHint, tvUrl, tvStatus, tvUpload, tvEnvio, tvNovosSub, tvEnviarSub;
+    private TextView tvQrHint, tvStatus, tvUrl, tvCodigo, tvIps, tvUpload;
+    private TextView tvEnvioVazio, tvNovosSub, tvEnviarSub;
+    private LinearLayout llEnvio;
     private Button btnAtivar, btnLimpar;
     private Switch swAuto;
     private View bannerNovos, bannerEnviar, dotNovos;
@@ -53,10 +59,13 @@ public class LanShareActivity extends AppCompatActivity {
 
         ivQr = findViewById(R.id.ivQrCode);
         tvQrHint = findViewById(R.id.tvQrHint);
-        tvUrl = findViewById(R.id.tvUrl);
         tvStatus = findViewById(R.id.tvStatus);
+        tvUrl = findViewById(R.id.tvUrl);
+        tvCodigo = findViewById(R.id.tvCodigo);
+        tvIps = findViewById(R.id.tvIps);
         tvUpload = findViewById(R.id.tvUpload);
-        tvEnvio = findViewById(R.id.tvEnvio);
+        tvEnvioVazio = findViewById(R.id.tvEnvioVazio);
+        llEnvio = findViewById(R.id.llEnvio);
         btnAtivar = findViewById(R.id.btnAtivar);
         btnLimpar = findViewById(R.id.btnLimpar);
         swAuto = findViewById(R.id.swAuto);
@@ -123,31 +132,46 @@ public class LanShareActivity extends AppCompatActivity {
         tvNovosSub.setText(getString(R.string.por_ver, n));
     }
 
+    /** Lista dos ficheiros marcados, com botão de remover em cada um. */
     private void atualizarEnvio() {
         List<File> files = SendQueue.files();
         int n = files.size();
+
         tvEnviarSub.setText(getString(R.string.selecionados_n, n));
-        tvEnvio.setText(n == 0 ? getString(R.string.envio_vazio) : getString(R.string.envio_pronto, n));
+        tvEnvioVazio.setVisibility(n == 0 ? View.VISIBLE : View.GONE);
         btnLimpar.setVisibility(n == 0 ? View.GONE : View.VISIBLE);
+
+        llEnvio.removeAllViews();
+        LayoutInflater inflater = LayoutInflater.from(this);
+        for (File f : files) {
+            View row = inflater.inflate(R.layout.item_envio, llEnvio, false);
+            ((TextView) row.findViewById(R.id.tvNome)).setText(f.getName());
+            row.findViewById(R.id.btnRemover).setOnClickListener(v -> {
+                SendQueue.toggle(f);
+                atualizarEnvio();
+            });
+            llEnvio.addView(row);
+        }
+
         if (server != null) server.setShareFiles(files);
     }
 
     private void ativar() {
-        String ip = obterIpLocal();
-        if (ip == null) {
+        List<String> ips = ipsDisponiveis();
+        if (ips.isEmpty()) {
             Toast.makeText(this, R.string.lan_sem_rede, Toast.LENGTH_LONG).show();
             return;
         }
 
-        int porta = LanShareServer.obterPortaAleatoriaLivre();
-        String token = LanShareServer.gerarToken();
-        String url = "http://" + ip + ":" + porta + "/?t=" + token;
+        int porta = LanShareServer.escolherPorta();
+        String codigo = LanShareServer.gerarToken();
+        String base = "http://" + ips.get(0) + ":" + porta;
 
         File destino = SeenStore.downloadsDir();
         destino.mkdirs();
 
         try {
-            server = new LanShareServer(porta, destino, token,
+            server = new LanShareServer(porta, destino, codigo,
                     nome -> runOnUiThread(() -> onRecebido(nome)));
             server.setShareFiles(SendQueue.files());
             server.start();
@@ -157,11 +181,18 @@ public class LanShareActivity extends AppCompatActivity {
             return;
         }
 
-        Bitmap qr = gerarQr(url, 480);
+        Bitmap qr = gerarQr(base + "/?t=" + codigo, 480);
         if (qr != null) ivQr.setImageBitmap(qr);
         tvQrHint.setVisibility(View.GONE);
-        tvUrl.setText(url);
-        tvUrl.setVisibility(View.VISIBLE);
+
+        tvUrl.setText(base);
+        tvCodigo.setText(codigo);
+        if (ips.size() > 1) {
+            tvIps.setText(getString(R.string.enderecos_outros, join(ips.subList(1, ips.size()))));
+        } else {
+            tvIps.setText("");
+        }
+
         tvUpload.setText("");
         tvStatus.setText(R.string.lan_ativo);
         btnAtivar.setText(R.string.lan_desativar);
@@ -178,7 +209,9 @@ public class LanShareActivity extends AppCompatActivity {
         }
         ivQr.setImageDrawable(null);
         tvQrHint.setVisibility(View.VISIBLE);
-        tvUrl.setVisibility(View.GONE);
+        tvUrl.setText("");
+        tvCodigo.setText("");
+        tvIps.setText("");
         tvStatus.setText(R.string.lan_inativo);
         btnAtivar.setText(R.string.lan_ativar);
     }
@@ -190,19 +223,40 @@ public class LanShareActivity extends AppCompatActivity {
         atualizarNovos();
     }
 
-    private String obterIpLocal() {
+    /**
+     * Endereços IPv4 da TV. Wi-Fi e Ethernet primeiro; ignora interfaces virtuais
+     * (tun, docker, veth, rmnet) e endereços de ligação local (169.254.x.x).
+     */
+    private List<String> ipsDisponiveis() {
+        List<String> prioritarios = new ArrayList<>();
+        List<String> outros = new ArrayList<>();
         try {
             for (NetworkInterface intf : Collections.list(NetworkInterface.getNetworkInterfaces())) {
                 if (!intf.isUp() || intf.isLoopback()) continue;
-                for (InetAddress addr : Collections.list(intf.getInetAddresses())) {
-                    if (!addr.isLoopbackAddress() && addr instanceof Inet4Address) {
-                        return addr.getHostAddress();
-                    }
+                String n = intf.getName().toLowerCase(Locale.ROOT);
+                if (n.startsWith("tun") || n.startsWith("dummy") || n.startsWith("docker")
+                        || n.startsWith("veth") || n.startsWith("rmnet") || n.startsWith("v4-")) continue;
+                boolean pri = n.startsWith("wlan") || n.startsWith("eth") || n.startsWith("wifi") || n.startsWith("en");
+                for (InetAddress a : Collections.list(intf.getInetAddresses())) {
+                    if (a.isLoopbackAddress() || !(a instanceof Inet4Address)) continue;
+                    String ip = a.getHostAddress();
+                    if (ip.startsWith("169.254.")) continue;
+                    (pri ? prioritarios : outros).add(ip);
                 }
             }
         } catch (Exception ignored) {
         }
-        return null;
+        prioritarios.addAll(outros);
+        return prioritarios;
+    }
+
+    private static String join(List<String> itens) {
+        StringBuilder sb = new StringBuilder();
+        for (String s : itens) {
+            if (sb.length() > 0) sb.append(", ");
+            sb.append(s);
+        }
+        return sb.toString();
     }
 
     private Bitmap gerarQr(String texto, int size) {

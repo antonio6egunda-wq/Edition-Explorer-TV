@@ -41,6 +41,7 @@ public class BrowserActivity extends AppCompatActivity {
     public static final String EXTRA_DIR = "dir";
     public static final String EXTRA_CATEGORY = "category";
     public static final String EXTRA_SELECT = "select";
+    public static final String EXTRA_FOCUS = "focus";
 
     public static final int MODE_DETAILED = 0;
     public static final int MODE_COMPACT = 1;
@@ -66,14 +67,26 @@ public class BrowserActivity extends AppCompatActivity {
     private int mode;
     private int sort;
 
+    // Foco: só é aplicado ao abrir o ecrã, para não saltar ao voltar de um menu
+    private String focusNome;
+    private boolean focarAoCarregar = true;
+
+    // Impede operações sobrepostas (era o que duplicava os ficheiros colados)
+    private boolean operando;
+
     private TextView tvTitle, tvEmpty, tvClipboard;
     private Button btnDetalhado, btnCompacto, btnGrade, btnOrdenar, btnEnviar;
+    private View layoutCabecalho;
     private RecyclerView rv;
     private FileAdapter adapter;
 
     private final FileAdapter.Callback callback = new FileAdapter.Callback() {
         @Override
         public void onOpen(File f) {
+            if (FileAdapter.isParent(f)) {
+                subir();
+                return;
+            }
             if (selectMode && !f.isDirectory()) {
                 SendQueue.toggle(f);
                 adapter.notifyDataSetChanged();
@@ -112,11 +125,13 @@ public class BrowserActivity extends AppCompatActivity {
         btnGrade = findViewById(R.id.btnGrade);
         btnOrdenar = findViewById(R.id.btnOrdenar);
         btnEnviar = findViewById(R.id.btnEnviar);
+        layoutCabecalho = findViewById(R.id.layoutCabecalho);
         rv = findViewById(R.id.rvFiles);
 
         String cat = getIntent().getStringExtra(EXTRA_CATEGORY);
         String path = getIntent().getStringExtra(EXTRA_DIR);
         selectMode = getIntent().getBooleanExtra(EXTRA_SELECT, false);
+        focusNome = getIntent().getStringExtra(EXTRA_FOCUS);
         if (cat != null) {
             category = LibraryIndex.Category.valueOf(cat);
         } else {
@@ -137,7 +152,6 @@ public class BrowserActivity extends AppCompatActivity {
         });
         btnEnviar.setOnClickListener(v -> voltarParaEnvio());
 
-        // No modo de seleção, o botão Enviar substitui o de ordenação
         btnOrdenar.setVisibility(selectMode ? View.GONE : View.VISIBLE);
         btnEnviar.setVisibility(selectMode ? View.VISIBLE : View.GONE);
 
@@ -159,11 +173,23 @@ public class BrowserActivity extends AppCompatActivity {
 
     private void applyLayout() {
         adapter = new FileAdapter(this, mode, selectMode, callback);
-        rv.setLayoutManager(mode == MODE_GRID ? new GridLayoutManager(this, 5) : new LinearLayoutManager(this));
+        if (mode == MODE_GRID) {
+            rv.setLayoutManager(new GridLayoutManager(this, colunasGrade()));
+        } else {
+            rv.setLayoutManager(new LinearLayoutManager(this));
+        }
         rv.setAdapter(adapter);
+        layoutCabecalho.setVisibility(mode == MODE_COMPACT ? View.VISIBLE : View.GONE);
         btnDetalhado.setActivated(mode == MODE_DETAILED);
         btnCompacto.setActivated(mode == MODE_COMPACT);
         btnGrade.setActivated(mode == MODE_GRID);
+    }
+
+    /** Cartões de ~260 dp: 5 colunas num 1080p, mais em ecrãs maiores. */
+    private int colunasGrade() {
+        float d = getResources().getDisplayMetrics().density;
+        int largura = getResources().getDisplayMetrics().widthPixels;
+        return Math.max(3, largura / (int) (260 * d));
     }
 
     private void reload() {
@@ -196,26 +222,72 @@ public class BrowserActivity extends AppCompatActivity {
                     if (!f.getName().startsWith(".")) list.add(f);
                 }
             }
+            // ".." aparece em todas as pastas, exceto na raiz de cada armazenamento
+            if (!FileAdapter.estaNaRaizDeArmazenamento(dir)) {
+                list.add(new File(dir, ".."));
+            }
         }
         Collections.sort(list, comparator());
         adapter.setItems(list);
 
+        boolean semFicheiros = true;
+        for (File f : list) {
+            if (!FileAdapter.isParent(f)) {
+                semFicheiros = false;
+                break;
+            }
+        }
         if (erro != null) {
             tvEmpty.setText(erro);
             tvEmpty.setVisibility(View.VISIBLE);
-        } else if (list.isEmpty()) {
+        } else if (semFicheiros) {
             tvEmpty.setText(R.string.pasta_vazia);
             tvEmpty.setVisibility(View.VISIBLE);
         } else {
             tvEmpty.setVisibility(View.GONE);
         }
+
+        if (focarAoCarregar) {
+            focarAoCarregar = false;
+            focarItem(focusNome);
+            focusNome = null;
+        }
         atualizarClipboard();
     }
 
-    /** Pastas primeiro (só nas pastas reais); depois por nome ou por data, mais recente primeiro. */
+    /** Foca a entrada pedida (ou a primeira) e rola a lista até ela. Numa pasta vazia foca a lista. */
+    private void focarItem(String nome) {
+        rv.post(() -> {
+            if (adapter.getItemCount() == 0) {
+                rv.requestFocus();
+                return;
+            }
+            int pos = 0;
+            if (nome != null) {
+                for (int i = 0; i < adapter.getItemCount(); i++) {
+                    if (adapter.getItem(i).getName().equals(nome)) {
+                        pos = i;
+                        break;
+                    }
+                }
+            }
+            final int alvo = pos;
+            rv.scrollToPosition(alvo);
+            rv.postDelayed(() -> {
+                RecyclerView.ViewHolder vh = rv.findViewHolderForAdapterPosition(alvo);
+                if (vh != null) vh.itemView.requestFocus();
+                else rv.requestFocus();
+            }, 80);
+        });
+    }
+
+    /** Pastas primeiro (exceto ".." que fica sempre no topo); depois por nome ou data (mais recente primeiro). */
     private Comparator<File> comparator() {
         final boolean porData = sort == SORT_DATE;
         return (a, b) -> {
+            boolean pa = FileAdapter.isParent(a);
+            boolean pb = FileAdapter.isParent(b);
+            if (pa != pb) return pa ? -1 : 1;
             if (category == null && a.isDirectory() != b.isDirectory()) {
                 return a.isDirectory() ? -1 : 1;
             }
@@ -247,6 +319,16 @@ public class BrowserActivity extends AppCompatActivity {
         SeenStore.markSeen(this, f);
         adapter.notifyDataSetChanged();
 
+        if (FileOps.ehArquivo(f)) {
+            new AlertDialog.Builder(this)
+                    .setTitle(R.string.descompactar_titulo)
+                    .setMessage(getString(R.string.descompactar_confirma, f.getName()))
+                    .setPositiveButton(R.string.descompactar, (d, w) -> descompactar(f))
+                    .setNegativeButton(R.string.cancelar, null)
+                    .show();
+            return;
+        }
+
         try {
             Uri uri = FileProvider.getUriForFile(this, getPackageName() + ".fileprovider", f);
             String name = f.getName();
@@ -257,10 +339,24 @@ public class BrowserActivity extends AppCompatActivity {
             Intent i = new Intent(Intent.ACTION_VIEW);
             i.setDataAndType(uri, mime != null ? mime : "*/*");
             i.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION | Intent.FLAG_ACTIVITY_NEW_TASK);
-            startActivity(i);
+            startActivity(Intent.createChooser(i, getString(R.string.abrir_com)));
         } catch (ActivityNotFoundException | IllegalArgumentException e) {
             Toast.makeText(this, R.string.nenhuma_app, Toast.LENGTH_SHORT).show();
         }
+    }
+
+    /** Sobe para a pasta pai e deixa o foco na pasta de onde se veio. */
+    private void subir() {
+        File pai = dir != null ? dir.getParentFile() : null;
+        if (pai == null) {
+            finish();
+            return;
+        }
+        startActivity(new Intent(this, BrowserActivity.class)
+                .putExtra(EXTRA_DIR, pai.getAbsolutePath())
+                .putExtra(EXTRA_SELECT, selectMode)
+                .putExtra(EXTRA_FOCUS, dir.getName()));
+        finish();
     }
 
     // ---------- Modo de seleção para enviar ----------
@@ -284,7 +380,7 @@ public class BrowserActivity extends AppCompatActivity {
     public boolean onKeyDown(int keyCode, KeyEvent event) {
         if (keyCode == KeyEvent.KEYCODE_MENU || keyCode == KeyEvent.KEYCODE_BUTTON_Y) {
             File f = ficheiroFocado();
-            if (f != null) mostrarMenu(f);
+            if (f != null && !FileAdapter.isParent(f)) mostrarMenu(f);
             return true;
         }
         return super.onKeyDown(keyCode, event);
@@ -300,6 +396,8 @@ public class BrowserActivity extends AppCompatActivity {
     // ---------- Menu de ações (layout_menu_acao) ----------
 
     private void mostrarMenu(File f) {
+        if (FileAdapter.isParent(f)) return;
+
         View v = LayoutInflater.from(this).inflate(R.layout.layout_menu_acao, null);
         PopupWindow pw = new PopupWindow(v, ViewGroup.LayoutParams.WRAP_CONTENT,
                 ViewGroup.LayoutParams.WRAP_CONTENT, true);
@@ -308,9 +406,14 @@ public class BrowserActivity extends AppCompatActivity {
         pw.setElevation(24f);
 
         View colar = v.findViewById(R.id.btn_colar);
-        boolean podeColar = dir != null && clipFile != null;
+        boolean podeColar = dir != null && clipFile != null && !operando;
         colar.setEnabled(podeColar);
         colar.setAlpha(podeColar ? 1f : 0.4f);
+
+        View descompactar = v.findViewById(R.id.btn_descompactar);
+        boolean podeDescompactar = FileOps.ehArquivo(f);
+        descompactar.setEnabled(podeDescompactar);
+        descompactar.setAlpha(podeDescompactar ? 1f : 0.4f);
 
         v.findViewById(R.id.btn_copiar).setOnClickListener(x -> {
             clipFile = f;
@@ -327,6 +430,14 @@ public class BrowserActivity extends AppCompatActivity {
         colar.setOnClickListener(x -> {
             pw.dismiss();
             colar();
+        });
+        v.findViewById(R.id.btn_compactar).setOnClickListener(x -> {
+            pw.dismiss();
+            compactar(f);
+        });
+        descompactar.setOnClickListener(x -> {
+            pw.dismiss();
+            descompactar(f);
         });
         v.findViewById(R.id.btn_renomear).setOnClickListener(x -> {
             pw.dismiss();
@@ -345,16 +456,33 @@ public class BrowserActivity extends AppCompatActivity {
         v.findViewById(R.id.btn_copiar).requestFocus();
     }
 
+    /** Cola uma vez e limpa a área de transferência, para não repetir por engano. */
     private void colar() {
-        if (clipFile == null || dir == null) return;
+        if (clipFile == null || dir == null || operando) return;
         final File src = clipFile;
         final boolean cut = clipCut;
         final File destino = dir;
-        runOp(cut ? R.string.ok_movido : R.string.ok_copiado, () -> {
-            boolean ok = cut ? FileOps.move(src, destino) : FileOps.copy(src, destino);
-            if (ok && cut) clipFile = null;
-            return ok;
-        });
+        runOp(cut ? R.string.ok_movido : R.string.ok_copiado,
+                () -> cut ? FileOps.move(src, destino) : FileOps.copy(src, destino),
+                true);
+    }
+
+    private void compactar(File f) {
+        final File alvo = f;
+        final File destino = dir != null ? dir : f.getParentFile();
+        final String nomeZip = f.getName() + ".zip";
+        runOp(R.string.ok_compactado, () -> {
+            FileOps.zipar(Collections.singletonList(alvo), destino, nomeZip);
+            return true;
+        }, false);
+    }
+
+    private void descompactar(File f) {
+        final File alvo = f;
+        runOp(R.string.ok_descompactado, () -> {
+            FileOps.descompactar(alvo, alvo.getParentFile());
+            return true;
+        }, false);
     }
 
     private void renomear(File f) {
@@ -367,7 +495,7 @@ public class BrowserActivity extends AppCompatActivity {
                 .setPositiveButton(R.string.ok, (d, w) -> {
                     final String novo = et.getText().toString().trim();
                     if (novo.isEmpty() || novo.equals(f.getName())) return;
-                    runOp(R.string.ok_renomeado, () -> FileOps.rename(f, novo));
+                    runOp(R.string.ok_renomeado, () -> FileOps.rename(f, novo), false);
                 })
                 .setNegativeButton(R.string.cancelar, null)
                 .show();
@@ -377,7 +505,8 @@ public class BrowserActivity extends AppCompatActivity {
         new AlertDialog.Builder(this)
                 .setTitle(R.string.excluir_titulo)
                 .setMessage(getString(R.string.excluir_msg, f.getName()))
-                .setPositiveButton(R.string.excluir, (d, w) -> runOp(R.string.ok_excluido, () -> FileOps.delete(f)))
+                .setPositiveButton(R.string.excluir, (d, w) ->
+                        runOp(R.string.ok_excluido, () -> FileOps.delete(f), false))
                 .setNegativeButton(R.string.cancelar, null)
                 .show();
     }
@@ -416,19 +545,38 @@ public class BrowserActivity extends AppCompatActivity {
         tvClipboard.setVisibility(View.VISIBLE);
     }
 
-    /** Corre uma operação de ficheiros fora da UI e atualiza a lista no fim. */
-    private void runOp(int msgOk, Op op) {
+    /**
+     * Corre uma operação de ficheiros fora da UI. Só uma de cada vez.
+     * limparClip: limpa a área de transferência quando a operação termina com sucesso.
+     */
+    private void runOp(int msgOk, Op op, boolean limparClip) {
+        if (operando) {
+            Toast.makeText(this, R.string.aguarde, Toast.LENGTH_SHORT).show();
+            return;
+        }
+        operando = true;
         new Thread(() -> {
             boolean ok;
+            String detalhe = null;
             try {
                 ok = op.run();
             } catch (Exception e) {
                 ok = false;
+                detalhe = e.getMessage();
             }
             final boolean resultado = ok;
+            final String causa = detalhe;
             runOnUiThread(() -> {
-                Toast.makeText(this, resultado ? getString(msgOk) : getString(R.string.erro_operacao),
-                        Toast.LENGTH_SHORT).show();
+                operando = false;
+                if (resultado && limparClip) {
+                    clipFile = null;
+                    clipCut = false;
+                }
+                String texto;
+                if (resultado) texto = getString(msgOk);
+                else if (causa != null && !causa.isEmpty()) texto = causa;
+                else texto = getString(R.string.erro_operacao);
+                Toast.makeText(this, texto, Toast.LENGTH_LONG).show();
                 LibraryIndex.invalidate();
                 reload();
             });
