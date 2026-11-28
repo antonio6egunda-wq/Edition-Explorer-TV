@@ -155,14 +155,49 @@
         android:clipToPadding="false"
         android:paddingBottom="16dp" />
 
-    <TextView
-        android:id="@+id/tvClipboard"
-        android:layout_width="wrap_content"
+    <LinearLayout
+        android:id="@+id/layoutClipboard"
+        android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:layout_marginTop="8dp"
-        android:textColor="@color/accent"
-        android:textSize="16sp"
-        android:visibility="gone" />
+        android:layout_marginTop="12dp"
+        android:background="@drawable/bg_card"
+        android:gravity="center_vertical"
+        android:orientation="horizontal"
+        android:paddingStart="20dp"
+        android:paddingTop="10dp"
+        android:paddingEnd="16dp"
+        android:paddingBottom="10dp"
+        android:visibility="gone">
+
+        <TextView
+            android:id="@+id/tvClipboard"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:singleLine="true"
+            android:ellipsize="middle"
+            android:textColor="@color/accent"
+            android:textSize="16sp" />
+
+        <Button
+            android:id="@+id/btnColarAqui"
+            style="@style/Button.Explorer"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="12dp"
+            android:drawableStart="@drawable/ic_paste"
+            android:drawablePadding="10dp"
+            android:drawableTint="@color/selector_button_text"
+            android:text="@string/menu_colar" />
+
+        <Button
+            android:id="@+id/btnCancelarClip"
+            style="@style/Button.Explorer"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="12dp"
+            android:text="@string/cancelar" />
+    </LinearLayout>
 
     <TextView
         android:id="@+id/tvDica"

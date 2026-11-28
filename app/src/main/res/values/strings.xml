@@ -47,8 +47,8 @@
     <string name="pasta_vazia">Pasta vazia</string>
     <string name="sem_acesso">Sem acesso a esta pasta</string>
     <string name="browser_dica">Menu ou tecla Y: ações · Voltar: subir de pasta</string>
-    <string name="clip_copiado">Copiado: %1$s. Abra uma pasta e escolha Colar.</string>
-    <string name="clip_recortado">Recortado: %1$s. Abra uma pasta e escolha Colar.</string>
+    <string name="clip_copiado">Copiado: %1$s</string>
+    <string name="clip_recortado">Recortado: %1$s</string>
     <string name="nenhuma_app">Nenhuma app encontrada para abrir este ficheiro.</string>
     <string name="tipo_pasta">Pasta</string>
     <string name="tipo_ficheiro">Ficheiro</string>
@@ -108,4 +108,5 @@
     <string name="descompactar_confirma">Descompactar \"%s\" para uma pasta nova?</string>
     <string name="descompactar">Descompactar</string>
     <string name="abrir_com">Abrir com</string>
+    <string name="colar_bloqueado">Não é possível colar uma pasta dentro dela própria.</string>
 </resources>

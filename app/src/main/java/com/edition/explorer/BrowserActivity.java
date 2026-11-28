@@ -75,6 +75,8 @@ public class BrowserActivity extends AppCompatActivity {
     private boolean operando;
 
     private TextView tvTitle, tvEmpty, tvClipboard;
+    private View layoutClipboard;
+    private Button btnColarAqui, btnCancelarClip;
     private Button btnDetalhado, btnCompacto, btnGrade, btnOrdenar, btnEnviar;
     private View layoutCabecalho;
     private RecyclerView rv;
@@ -120,6 +122,15 @@ public class BrowserActivity extends AppCompatActivity {
         tvTitle = findViewById(R.id.tvTitle);
         tvEmpty = findViewById(R.id.tvEmpty);
         tvClipboard = findViewById(R.id.tvClipboard);
+        layoutClipboard = findViewById(R.id.layoutClipboard);
+        btnColarAqui = findViewById(R.id.btnColarAqui);
+        btnCancelarClip = findViewById(R.id.btnCancelarClip);
+        btnColarAqui.setOnClickListener(v -> colar());
+        btnCancelarClip.setOnClickListener(v -> {
+            clipFile = null;
+            clipCut = false;
+            atualizarClipboard();
+        });
         btnDetalhado = findViewById(R.id.btnDetalhado);
         btnCompacto = findViewById(R.id.btnCompacto);
         btnGrade = findViewById(R.id.btnGrade);
@@ -462,6 +473,11 @@ public class BrowserActivity extends AppCompatActivity {
         final File src = clipFile;
         final boolean cut = clipCut;
         final File destino = dir;
+        if (src.isDirectory() && (destino.getAbsolutePath().equals(src.getAbsolutePath())
+                || destino.getAbsolutePath().startsWith(src.getAbsolutePath() + "/"))) {
+            Toast.makeText(this, R.string.colar_bloqueado, Toast.LENGTH_LONG).show();
+            return;
+        }
         runOp(cut ? R.string.ok_movido : R.string.ok_copiado,
                 () -> cut ? FileOps.move(src, destino) : FileOps.copy(src, destino),
                 true);
@@ -536,13 +552,17 @@ public class BrowserActivity extends AppCompatActivity {
                 .show();
     }
 
+    /** Barra com o que está copiado/recortado, e os botões Colar aqui e Cancelar. */
     private void atualizarClipboard() {
         if (clipFile == null) {
-            tvClipboard.setVisibility(View.GONE);
+            layoutClipboard.setVisibility(View.GONE);
             return;
         }
         tvClipboard.setText(getString(clipCut ? R.string.clip_recortado : R.string.clip_copiado, clipFile.getName()));
-        tvClipboard.setVisibility(View.VISIBLE);
+        boolean podeColar = dir != null && !operando;
+        btnColarAqui.setEnabled(podeColar);
+        btnColarAqui.setAlpha(podeColar ? 1f : 0.4f);
+        layoutClipboard.setVisibility(View.VISIBLE);
     }
 
     /**
